@@ -426,6 +426,8 @@
 
 <script>
     const WORLD_H = 400;
+    const FAR_HORIZON = WORLD_H * 0.62;
+    const MID_HORIZON = WORLD_H * 0.70;
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
     const overlay = document.getElementById('overlay');
@@ -747,13 +749,14 @@
     function initWorld() {
         mountains = Array.from({ length: 6 }, (_, i) => ({
             x: i * 280 + Math.random() * 80,
-            y: WORLD_H * 0.42 + Math.random() * 40,
-            scale: 0.7 + Math.random() * 0.5
+            w: 170 + Math.random() * 90,
+            peak: 88 + Math.random() * 72,
+            kink: 0.35 + Math.random() * 0.3
         }));
         hills = Array.from({ length: 5 }, (_, i) => ({
-            x: i * 320 + Math.random() * 60,
-            w: 180 + Math.random() * 120,
-            h: 50 + Math.random() * 40
+            x: i * 300 + Math.random() * 70,
+            w: 160 + Math.random() * 130,
+            h: 36 + Math.random() * 34
         }));
         clouds = Array.from({ length: 8 }, () => ({
             x: Math.random() * worldW * 2,
@@ -1105,7 +1108,7 @@
         });
         mountains.forEach(m => {
             m.x -= speed * 0.04 * dt;
-            if (m.x < -360) m.x = worldW + 180;
+            if (m.x < -m.w - 40) m.x = worldW + 80;
         });
         hills.forEach(h => {
             h.x -= speed * 0.07 * dt;
@@ -1238,6 +1241,73 @@
         ctx.fill();
     }
 
+    function drawFarLand() {
+        ctx.beginPath();
+        for (let x = -80; x < worldW + 80; x += 16) {
+            const y = FAR_HORIZON + Math.sin(x * 0.012 + 0.4) * 4;
+            if (x === -80) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.lineTo(worldW + 80, WORLD_H + 50);
+        ctx.lineTo(-80, WORLD_H + 50);
+        ctx.closePath();
+        ctx.fillStyle = '#b7c49a';
+        ctx.fill();
+        ctx.fillStyle = '#a9bb7e';
+        ctx.fillRect(-80, MID_HORIZON, worldW + 160, WORLD_H - MID_HORIZON + 50);
+    }
+
+    function drawMountain(m) {
+        const left = m.x;
+        const right = m.x + m.w;
+        const mid = left + m.w * m.kink;
+        const top = FAR_HORIZON - m.peak;
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(-120, 0, worldW + 240, FAR_HORIZON + 2);
+        ctx.clip();
+        ctx.beginPath();
+        ctx.moveTo(left, FAR_HORIZON + 30);
+        ctx.lineTo(mid, top);
+        ctx.lineTo(right, FAR_HORIZON + 30);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(90, 110, 130, 0.5)';
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(left, FAR_HORIZON);
+        ctx.lineTo(mid, top);
+        ctx.strokeStyle = 'rgba(60, 70, 80, 0.4)';
+        ctx.lineWidth = 2;
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(mid, top);
+        ctx.lineTo(right, FAR_HORIZON);
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    function drawHill(h) {
+        const base = MID_HORIZON;
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(-120, 0, worldW + 240, base + 2);
+        ctx.clip();
+        ctx.beginPath();
+        ctx.moveTo(h.x, base + 40);
+        ctx.quadraticCurveTo(h.x + h.w / 2, base - h.h * 1.65, h.x + h.w, base + 40);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(100, 140, 70, 0.5)';
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(h.x, base);
+        ctx.quadraticCurveTo(h.x + h.w / 2, base - h.h * 1.65, h.x + h.w, base);
+        ctx.strokeStyle = 'rgba(70, 100, 50, 0.32)';
+        ctx.lineWidth = 1.8;
+        ctx.stroke();
+        ctx.restore();
+    }
+
     function roundRect(x, y, w, h, r) {
         ctx.beginPath();
         ctx.moveTo(x + r, y);
@@ -1296,31 +1366,11 @@
         }
 
         drawSky();
+        drawFarLand();
 
-        mountains.forEach(m => {
-            ctx.save();
-            ctx.translate(m.x, m.y);
-            ctx.scale(m.scale, m.scale);
-            ctx.beginPath();
-            ctx.moveTo(0, 40);
-            ctx.lineTo(110, -130);
-            ctx.lineTo(220, 40);
-            ctx.closePath();
-            ctx.fillStyle = 'rgba(90, 110, 130, 0.28)';
-            ctx.fill();
-            ctx.strokeStyle = 'rgba(60,70,80,0.4)';
-            ctx.stroke();
-            ctx.restore();
-        });
-
-        hills.forEach(h => {
-            ctx.beginPath();
-            ctx.ellipse(h.x + h.w / 2, WORLD_H * 0.78, h.w / 2, h.h, 0, Math.PI, 0);
-            ctx.fillStyle = 'rgba(120, 160, 90, 0.22)';
-            ctx.fill();
-        });
-
+        mountains.forEach(m => drawMountain(m));
         clouds.forEach(c => drawCloud(c.x, c.y, c.scale));
+        hills.forEach(h => drawHill(h));
 
         ctx.beginPath();
         for (let x = -60; x < worldW + 60; x += 8) {
