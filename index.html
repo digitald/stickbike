@@ -5,7 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="theme-color" content="#7ec8e8">
     <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Stickbike">
     <meta name="mobile-web-app-capable" content="yes">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
     <title>Omino Stick: Hill Climb</title>
     <style>
         :root {
@@ -147,6 +151,14 @@
         .control-group-left { left: max(16px, env(safe-area-inset-left)); }
         .control-group-right { right: max(16px, env(safe-area-inset-right)); }
 
+        /* In verticale i pulsanti restano sopra il fondo valle, non sulla bici */
+        @media (orientation: portrait) {
+            body.is-touch .control-group-left,
+            body.is-touch .control-group-right {
+                bottom: max(18%, calc(env(safe-area-inset-bottom) + 72px));
+            }
+        }
+
         .control-btn {
             width: 76px;
             height: 76px;
@@ -251,7 +263,16 @@
             color: #666;
         }
 
+        .overlay-record {
+            margin: 0 0 8px;
+            font-size: 0.88rem;
+            color: #555;
+        }
+
+        .overlay-record.nuovo { color: #c62828; font-weight: 700; }
+
         .overlay-score[hidden],
+        .overlay-record[hidden],
         .btn-start-again[hidden] { display: none; }
 
         .overlay-score strong {
@@ -328,6 +349,10 @@
                 bottom: max(12px, env(safe-area-inset-bottom));
                 transform: none;
             }
+            /* Freno/salto più in alto del fondo valle; il gas resta in basso a destra */
+            .control-group-left {
+                bottom: max(22%, env(safe-area-inset-bottom));
+            }
             .btn-jump { margin-bottom: 16px; }
             #overlay { padding: 8px; }
             .overlay-card { padding: 12px 16px; }
@@ -335,6 +360,7 @@
             #overlay p { font-size: 0.82rem; }
             .overlay-score { margin: 2px 0 8px; }
             .overlay-score strong { font-size: 1.7rem; }
+            .overlay-record { margin-bottom: 4px; font-size: 0.78rem; }
             .btn-start-again {
                 margin-top: 8px;
                 padding: 8px 18px;
@@ -356,7 +382,9 @@
                 <kbd>←</kbd> freno
                 <kbd>→</kbd> pedala
                 <kbd>↑</kbd> salto
+                <kbd>Esc</kbd> pausa
             </div>
+            <button class="btn-icon" id="pauseBtn" title="Pausa" aria-label="Pausa">⏸</button>
             <button class="btn-icon" id="fsBtn" title="Schermo intero" aria-label="Schermo intero">⛶</button>
         </div>
     </div>
@@ -370,8 +398,9 @@
             <div class="overlay-card">
                 <h2 id="overlayTitle">Hill Climb</h2>
                 <p id="overlayScore" class="overlay-score" hidden></p>
+                <p id="overlayRecord" class="overlay-record" hidden></p>
                 <p id="overlaySub"></p>
-                <button type="button" id="btnStartAgain" class="btn-start-again" hidden>Start again</button>
+                <button type="button" id="btnStartAgain" class="btn-start-again" hidden>Riprova</button>
             </div>
         </div>
 
@@ -403,8 +432,10 @@
     const title = document.getElementById('overlayTitle');
     const sub = document.getElementById('overlaySub');
     const overlayScore = document.getElementById('overlayScore');
+    const overlayRecord = document.getElementById('overlayRecord');
     const btnStartAgain = document.getElementById('btnStartAgain');
     const fsBtn = document.getElementById('fsBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
     const container = document.getElementById('gameContainer');
     const btnLeft = document.getElementById('btnLeft');
     const btnUp = document.getElementById('btnUp');
@@ -425,33 +456,100 @@
         return false;
     }
 
+    function formatKm(km) {
+        return km.toFixed(2).replace('.', ',');
+    }
+
+    function distanceKm() {
+        return Math.max(0, distanceTravelled) / 10000;
+    }
+
+    const RECORD_KEY = 'stickbike-record';
+
+    function loadRecord() {
+        try {
+            const raw = JSON.parse(localStorage.getItem(RECORD_KEY) || 'null');
+            if (!raw || typeof raw !== 'object') return { score: 0, km: 0 };
+            return {
+                score: Math.max(0, Number(raw.score) || 0),
+                km: Math.max(0, Number(raw.km) || 0)
+            };
+        } catch (_) {
+            return { score: 0, km: 0 };
+        }
+    }
+
+    function commitRecord() {
+        const km = distanceKm();
+        const rec = loadRecord();
+        const isNewScore = score > rec.score;
+        const isNewKm = km > rec.km + 0.0001;
+        if (isNewScore) rec.score = score;
+        if (isNewKm) rec.km = km;
+        if (isNewScore || isNewKm) {
+            try { localStorage.setItem(RECORD_KEY, JSON.stringify(rec)); } catch (_) {}
+        }
+        return { rec, isNewScore, isNewKm };
+    }
+
+    function recordLine(rec) {
+        if (!rec.score && rec.km < 0.01) return '';
+        return 'Record: ' + rec.score + ' punti · ' + formatKm(rec.km) + ' km';
+    }
+
     function syncChrome() {
         const touch = isTouchPreferred();
         document.body.classList.toggle('is-touch', touch);
         document.body.classList.toggle('is-desktop', !touch);
         document.body.classList.toggle('is-portrait', window.innerHeight > window.innerWidth);
         document.body.classList.toggle('playing', gameState === 'playing');
+        pauseBtn.textContent = gameState === 'paused' ? '▶' : '⏸';
+        pauseBtn.title = gameState === 'paused' ? 'Riprendi' : 'Pausa';
+        pauseBtn.setAttribute('aria-label', pauseBtn.title);
         setOverlayCopy();
     }
 
     function setOverlayCopy() {
         if (gameState === 'playing') return;
         const touch = isTouchPreferred();
+        const rec = loadRecord();
+        overlayRecord.classList.remove('nuovo');
+
         if (gameState === 'start') {
             overlayScore.hidden = true;
+            overlayRecord.hidden = !recordLine(rec);
+            overlayRecord.textContent = recordLine(rec);
             btnStartAgain.hidden = true;
+            btnStartAgain.textContent = 'Riprova';
             title.textContent = 'Omino Stick';
             sub.innerHTML = touch
                 ? 'Stelle = punti · Rocce = pericolo<br><strong>Tocca per iniziare</strong><br>Freno e salto a sinistra · Gas a destra'
-                : 'Stelle = punti · Rocce = pericolo<br><strong>Spazio</strong> o clic per iniziare<br><kbd>A</kbd>/<kbd>←</kbd> freno · <kbd>D</kbd>/<kbd>→</kbd> pedala · <kbd>W</kbd>/<kbd>↑</kbd> salto';
-        } else if (gameState === 'gameover') {
-            overlayScore.hidden = false;
+                : 'Stelle = punti · Rocce = pericolo<br><strong>Spazio</strong> o clic per iniziare<br><kbd>A</kbd>/<kbd>←</kbd> freno · <kbd>D</kbd>/<kbd>→</kbd> pedala · <kbd>W</kbd>/<kbd>↑</kbd> salto · <kbd>Esc</kbd> pausa';
+        } else if (gameState === 'paused') {
+            overlayScore.hidden = true;
+            overlayRecord.hidden = true;
             btnStartAgain.hidden = false;
-            title.textContent = 'GAME OVER';
-            overlayScore.innerHTML = 'Punteggio <strong>' + score + '</strong>';
-            sub.textContent = touch
-                ? 'Tocca Start again per riprovare'
-                : 'Start again · Spazio o Invio';
+            btnStartAgain.textContent = 'Riprendi';
+            title.textContent = 'In pausa';
+            sub.textContent = touch ? 'Tocca Riprendi per continuare' : 'Esc, Spazio o Riprendi';
+        } else if (gameState === 'gameover') {
+            const km = distanceKm();
+            overlayScore.hidden = false;
+            overlayRecord.hidden = false;
+            btnStartAgain.hidden = false;
+            btnStartAgain.textContent = 'Riprova';
+            title.textContent = 'Fine corsa';
+            overlayScore.innerHTML = 'Punteggio <strong>' + score + '</strong>' +
+                '<span style="display:block;margin-top:8px;font-size:0.95rem;letter-spacing:0;text-transform:none;color:#444;font-weight:700">' +
+                formatKm(km) + ' km</span>';
+            const fresh = lastRecordResult || { rec: rec, isNewScore: false, isNewKm: false };
+            if (fresh.isNewScore || fresh.isNewKm) {
+                overlayRecord.classList.add('nuovo');
+                overlayRecord.textContent = 'Nuovo record! ' + recordLine(fresh.rec).replace('Record: ', '');
+            } else {
+                overlayRecord.textContent = recordLine(fresh.rec) || 'Nessun record ancora';
+            }
+            sub.textContent = touch ? 'Tocca Riprova' : 'Riprova · Spazio o Invio';
         }
     }
 
@@ -594,11 +692,13 @@
     }
 
     // --- GAME STATE ---
-    let gameState = 'start';
+    let gameState = 'start'; // start, playing, paused, gameover
     let frame = 0;
     let score = 0;
     let lives = 3;
     let worldXpos = 0;
+    let distanceTravelled = 0;
+    let lastRecordResult = null;
     let shake = 0;
     let lastTime = 0;
 
@@ -640,8 +740,8 @@
         canvas.width = Math.floor(viewW * dpr);
         canvas.height = Math.floor(viewH * dpr);
         worldW = viewW * (WORLD_H / viewH);
-        player.x = playerScreenX();
         syncChrome();
+        player.x = playerScreenX();
     }
 
     function initWorld() {
@@ -668,6 +768,8 @@
         score = 0;
         lives = 3;
         worldXpos = 0;
+        distanceTravelled = 0;
+        lastRecordResult = null;
         shake = 0;
         player.x = playerScreenX();
         player.vy = 0;
@@ -685,6 +787,43 @@
         initAudio();
         if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
         syncChrome();
+    }
+
+    function releaseKeys() {
+        keys.up = keys.left = keys.right = false;
+        btnUp.classList.remove('pressed');
+        btnLeft.classList.remove('pressed');
+        btnRight.classList.remove('pressed');
+    }
+
+    function muteWind() {
+        if (windSystem && audioCtx) {
+            windSystem.gain.gain.cancelScheduledValues(audioCtx.currentTime);
+            windSystem.gain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.08);
+        }
+    }
+
+    function pauseGame() {
+        if (gameState !== 'playing') return;
+        gameState = 'paused';
+        releaseKeys();
+        muteWind();
+        overlay.classList.remove('hidden');
+        setOverlayCopy();
+        syncChrome();
+    }
+
+    function resumeGame() {
+        if (gameState !== 'paused') return;
+        gameState = 'playing';
+        overlay.classList.add('hidden');
+        if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+        syncChrome();
+    }
+
+    function tryStart() {
+        if (gameState === 'paused') resumeGame();
+        else if (gameState === 'start' || gameState === 'gameover') resetGame();
     }
 
     function setupButton(btn, keyName) {
@@ -713,10 +852,6 @@
     setupButton(btnUp, 'up');
     setupButton(btnRight, 'right');
 
-    function tryStart() {
-        if (gameState === 'start' || gameState === 'gameover') resetGame();
-    }
-
     overlay.addEventListener('pointerdown', (e) => {
         e.preventDefault();
         tryStart();
@@ -741,10 +876,20 @@
     }
 
     window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            if (gameState === 'playing') pauseGame();
+            else if (gameState === 'paused') resumeGame();
+            return;
+        }
         if (e.code === 'Space' || e.key === 'Enter') {
             e.preventDefault();
             if (gameState === 'start' || gameState === 'gameover') {
                 tryStart();
+                return;
+            }
+            if (gameState === 'paused') {
+                resumeGame();
                 return;
             }
         }
@@ -761,10 +906,23 @@
     });
 
     window.addEventListener('blur', () => {
-        keys.up = keys.left = keys.right = false;
-        btnUp.classList.remove('pressed');
-        btnLeft.classList.remove('pressed');
-        btnRight.classList.remove('pressed');
+        releaseKeys();
+    });
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden && gameState === 'playing') pauseGame();
+    });
+
+    pauseBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (gameState === 'playing') pauseGame();
+        else if (gameState === 'paused') resumeGame();
+    });
+
+    document.querySelector('.header-bar h1').addEventListener('click', () => {
+        if (gameState === 'playing') pauseGame();
+        else if (gameState === 'paused') resumeGame();
     });
 
     window.matchMedia('(pointer: coarse)').addEventListener('change', syncChrome);
@@ -785,10 +943,27 @@
         return base + h1 + h2 + h3;
     }
 
+    function touchLeftGutterWorld() {
+        if (!isTouchPreferred()) return 0;
+        const group = document.querySelector('.control-group-left');
+        const canvasBox = canvas.getBoundingClientRect();
+        let css = 220;
+        if (group) {
+            const box = group.getBoundingClientRect();
+            if (box.width > 10 && canvasBox.width > 10) {
+                css = Math.max(css, box.right - canvasBox.left + 28);
+            }
+        }
+        return css * (WORLD_H / Math.max(viewH, 1));
+    }
+
     function playerScreenX() {
-        const base = Math.min(WORLD_H * 0.42, Math.max(110, worldW * 0.22));
-        const lookAhead = Math.max(0, player.speed) / maxSpeed * Math.min(48, worldW * 0.05);
-        return Math.max(90, base - lookAhead);
+        const gutter = touchLeftGutterWorld();
+        const minX = gutter > 0 ? gutter + 56 : 90;
+        const maxX = Math.max(minX, worldW * 0.46);
+        const preferred = Math.min(maxX, Math.max(minX, worldW * 0.28));
+        const lookAhead = Math.max(0, player.speed) / maxSpeed * Math.min(36, worldW * 0.04);
+        return Math.max(minX, Math.min(maxX, preferred - lookAhead));
     }
 
     // --- DRAW HELPERS ---
@@ -910,7 +1085,9 @@
             playGameOverJingle();
             buzz(80);
             gameState = 'gameover';
-            keys.up = keys.left = keys.right = false;
+            lastRecordResult = commitRecord();
+            releaseKeys();
+            muteWind();
             setTimeout(() => {
                 overlay.classList.remove('hidden');
                 setOverlayCopy();
@@ -920,6 +1097,7 @@
     }
 
     function updateBackground(dt) {
+        if (gameState === 'paused' || gameState === 'gameover') return;
         const speed = (gameState === 'playing') ? player.speed : 1.2;
         clouds.forEach(c => {
             c.x -= (speed * 0.08 + c.speed) * dt;
@@ -996,6 +1174,7 @@
         }
 
         worldXpos += player.speed * dt;
+        if (player.speed > 0) distanceTravelled += player.speed * dt;
 
         if (windSystem && audioCtx) {
             const vol = Math.abs(player.speed) / 20;
@@ -1072,13 +1251,18 @@
     function drawHUD() {
         const ui = Math.max(1, Math.min(1.45, viewH / 520));
         const pad = 12 * ui;
+        const leftW = 158 * ui;
+        const leftH = 78 * ui;
         ctx.fillStyle = 'rgba(255,253,245,0.86)';
-        roundRect(pad, pad, 148 * ui, 58 * ui, 10 * ui);
+        roundRect(pad, pad, leftW, leftH, 10 * ui);
         ctx.fill();
         ctx.fillStyle = '#222';
         ctx.font = `bold ${18 * ui}px Trebuchet MS, sans-serif`;
-        ctx.fillText('Punti ' + score, pad + 12 * ui, pad + 24 * ui);
-        for (let i = 0; i < lives; i++) drawHeart(pad + 20 * ui + i * 24 * ui, pad + 44 * ui, 1.15 * ui);
+        ctx.fillText('Punti ' + score, pad + 12 * ui, pad + 22 * ui);
+        ctx.fillStyle = '#555';
+        ctx.font = `${13 * ui}px Trebuchet MS, sans-serif`;
+        ctx.fillText(formatKm(distanceKm()) + ' km', pad + 12 * ui, pad + 40 * ui);
+        for (let i = 0; i < lives; i++) drawHeart(pad + 20 * ui + i * 24 * ui, pad + 62 * ui, 1.15 * ui);
 
         const meterW = 124 * ui;
         const tx = viewW - meterW - pad;
@@ -1088,7 +1272,7 @@
         ctx.fillStyle = '#444';
         ctx.font = `${12 * ui}px Trebuchet MS, sans-serif`;
         const danger = Math.abs(player.speed) > crashSpeedThreshold;
-        ctx.fillText(danger ? 'PERICOLO' : 'KM/H', tx + (danger ? 24 * ui : 42 * ui), pad + 18 * ui);
+        ctx.fillText(danger ? 'PERICOLO' : 'km/h', tx + (danger ? 24 * ui : 42 * ui), pad + 18 * ui);
 
         const speedPerc = Math.min(1, Math.abs(player.speed) / maxSpeed);
         ctx.strokeStyle = '#333';
@@ -1189,7 +1373,7 @@
         if (gameState !== 'start') drawPlayer();
         ctx.restore();
 
-        if (gameState === 'playing' || gameState === 'gameover') {
+        if (gameState === 'playing' || gameState === 'paused' || gameState === 'gameover') {
             ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
             drawHUD();
         }
@@ -1209,6 +1393,9 @@
     resize();
     initWorld();
     setOverlayCopy();
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
+    }
     requestAnimationFrame(loop);
 </script>
 </body>

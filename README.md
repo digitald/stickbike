@@ -4,12 +4,16 @@ Gioco HTML5 a file unico: un omino stick in bici su colline, stelle da raccoglie
 
 Gioca online: **[https://digitald.github.io/stickbike/](https://digitald.github.io/stickbike/)**
 
+Come è fatto il programma (HTML, JS, ciclo di gioco, collisioni): **[elementi_di_programmazione.md](elementi_di_programmazione.md)**.
+
 ## Controlli
 
-**Desktop:** `A` / `←` freno · `D` / `→` pedala · `W` / `↑` / Spazio salto  
-**Mobile:** Freno e salto a sinistra, gas a destra. In verticale si può giocare; in orizzontale si vede più strada.
+**Desktop:** `A` / `←` freno · `D` / `→` pedala · `W` / `↑` / Spazio salto · `Esc` pausa  
+**Mobile:** Freno e salto a sinistra, gas a destra. Pulsante pausa in alto. In verticale si può giocare; in orizzontale si vede più strada.
 
-Al game over compare il punteggio e **Start again** (su desktop anche Spazio o Invio).
+A fine corsa vedi punteggio, km e record (salvati sul dispositivo). **Riprova** (su desktop anche Spazio o Invio).
+
+Su telefono puoi aggiungere il gioco alla schermata Home (PWA).
 
 ## Avvio in locale
 
